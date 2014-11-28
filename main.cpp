@@ -1,17 +1,3 @@
-//
-//             Characteristics Number 04
-//              (version (r = 2) 2.10)
-//          (Matching System by CN between Two Images)
-//          (Cleanup version of CharacteristicsNumber 03)
-//
-//  (Based on "A Shape Descriptor Based on New Projective Invariants"
-//   by Zhongxuan Luo, Daiyun Luo, Xin Fan, Xinchen Zhou, and Qi Jia
-//   (IEEE ICIP 2013))
-//
-//                                      21014.11.3
-//                                      Terumasa AOKI
-//
-
 #ifdef _DEBUG
 #pragma comment(lib, "opencv_core2410d.lib")
 #pragma comment(lib, "opencv_imgproc2410d.lib")
@@ -74,10 +60,10 @@ using namespace cv;
 using namespace std;
 
 const int NUM_POINTS = 16;
-const int MAX_DIM_DESCRIPTOR = 120;
+const int MAX_DIM_DESCRIPTOR = 256;
 const int THRESHOLD_NEIGHBORHOOD = 5.0;
 const int SAMPLE_POINT_P = 1;
-const int STEP = 1;
+const int STEP = 16;
 const int SAMPLE_POINT_Q = 9;
 const int FILE_NAME_LENGTH = 100;
 typedef char Cfname[FILE_NAME_LENGTH];
@@ -86,7 +72,7 @@ const int CLASS_NUM = 62;
 const int TEST_LOC = CLASS_NUM;
 const int HULL_LIST_MAX = 20;
 float classLabels[CLASS_NUM];
-char classDir[CLASS_NUM+1][10] = {
+char classDir[CLASS_NUM + 1][10] = {
 	"A0", "B0", "C0", "D0",
 	"E0", "F0", "G0", "H0",
 	"I0", "J0", "K0", "L0",
@@ -106,6 +92,105 @@ char classDir[CLASS_NUM+1][10] = {
 };
 char testDir[] = "TEST";
 int getDescriptorFromImage(char* imageFile, float* descriptor)
+{
+	cv::Mat input_img = cv::imread(imageFile, 1);
+	if (!input_img.data) {
+		cout << "open image file:" << imageFile << " failed!" << endl;
+		return -1;
+	}
+
+	cv::Mat resized_img;
+	cv::Mat gray_img;
+
+	//// resizing image
+	cv::resize(input_img, resized_img, cv::Size(48, 48), 0.0, 0.0, 1);
+	//// resizing end
+
+
+	//// Generate Gray images
+	cv::cvtColor(resized_img, gray_img, CV_BGR2GRAY);
+	//// Generate Gray end
+
+	////weight points////
+
+	Mat w_map(resized_img.cols, resized_img.rows, CV_32FC1);
+	int w_cn = 0;
+	for (int i = 0; i < resized_img.cols; ++i)
+	{
+		for (int j = 0; j < resized_img.rows; ++j)
+		{
+			w_cn = 0;
+			if (resized_img.at<uchar>(i, j) < 50)
+			{
+				for (int l = i - 1; l < i + 1; ++l)
+				{
+					if (l < 0)
+					{
+						continue;
+					}
+					for (int m = j - 1; m < j + 1; ++m)
+					{
+						if (m<0){
+							continue;
+						}
+						if (resized_img.at<uchar>(l, m) < 50){
+							w_cn++;
+						}
+					}
+				}
+			}
+			//cout << "w_cn "<<w_cn<< endl;
+			if (w_cn == 0)
+			{
+				w_map.at<float>(i, j) = 0.0;
+			}
+			else if (w_cn != 0)
+			{
+				w_map.at<float>(i, j) = w_cn;
+			}
+		}
+	}
+
+	///// Initialize
+	int d_ptr, d_ptr02; // pointer for descriptor[ ]
+	for (d_ptr = 0; d_ptr < MAX_DIM_DESCRIPTOR; ++d_ptr)
+	{
+		descriptor[d_ptr] = 0;
+	}
+
+	d_ptr = 0;
+	d_ptr02 = 0;
+	///// Get hit points
+	float cn = 0.0;
+	float hit_rate = 0.0;
+
+	for (int i = 0; i < STEP; i++)
+	{
+		for (int j = 0; j< STEP; j++)
+		{
+			cn = 0;
+			for (int l = 0; l < resized_img.cols / STEP; ++l)
+			{
+				for (int m = 0; m < resized_img.rows / STEP; ++m)
+				{
+					if (resized_img.at<uchar>(((i*resized_img.cols / STEP) + l), ((j*resized_img.rows / STEP) + m)) <50)
+					{
+						cn += w_map.at<float>((i*resized_img.cols / STEP) + l, (j*resized_img.rows / STEP) + m);
+					}
+				}
+			}
+
+			hit_rate = cn / ((resized_img.cols / STEP)*(resized_img.rows / STEP));
+			descriptor[d_ptr] = hit_rate;
+			//cout << "descriptor[ " << d_ptr <<"] = "<<descriptor[d_ptr]<< endl;
+			d_ptr++;
+		}
+	}
+
+	return 0;
+}
+
+int _getDescriptorFromImage(char* imageFile, float* descriptor)
 {
 	cv::Mat input_img = cv::imread(imageFile, 1);
 	if (!input_img.data) {
@@ -171,7 +256,10 @@ int getDescriptorFromImage(char* imageFile, float* descriptor)
 		}
 	}
 
-	// "i < HULL_LIST_MAX" in for statement is add by wtq, to avoid illegal visitation to convexhull_list_x(y)
+	// ********************************************************************
+	// ****"i < HULL_LIST_MAX" in for statement is add by wtq, 
+	// ****to avoid illegal visitation to convexhull_list_x(y) 
+	// *******************************************************************
 	for (int i = 0; i < contours.size() && i < HULL_LIST_MAX; ++i)
 	{
 		current_k = 0;
@@ -213,7 +301,7 @@ int getDescriptorFromImage(char* imageFile, float* descriptor)
 
 	for (int i = 0; i<contours.size(); ++i)
 	{
-		if (i <= HULL_LIST_MAX && convexhull_list_num[i] > max_convexhull_list_num)
+		if (i < HULL_LIST_MAX && convexhull_list_num[i] > max_convexhull_list_num)
 		{
 			max_i = i;
 			max_convexhull_list_num = convexhull_list_num[i];
@@ -263,7 +351,6 @@ int getDescriptorFromImage(char* imageFile, float* descriptor)
 
 	interval = (int)max_convexhull_list_num / NUM_POINTS;
 
-
 	for (int p = 0; p < NUM_POINTS; ++p)
 	{
 		for (int q = 0; q < NUM_POINTS; ++q)
@@ -288,12 +375,13 @@ int getDescriptorFromImage(char* imageFile, float* descriptor)
 
 				for (int k = 1; k<length_ij; k = k + STEP)
 				{
-					xq = (int)((1.0 - (double)k / length_ij)*xi + (double)k / length_ij*xj);
-					yq = (int)((1.0 - (double)k / length_ij)*yi + (double)k / length_ij*yj);
+					xq = (int)((1.0 - (float)k / length_ij)*xi + (float)k / length_ij*xj);
+					yq = (int)((1.0 - (float)k / length_ij)*yi + (float)k / length_ij*yj);
 
 					///// Check exceptional intersection for input_img
 
 					count_edge = 0;
+
 					if (canny_img.at<uchar>(yq + 1, xq + 1) > 50)
 						count_edge++;
 					if (canny_img.at<uchar>(yq + 1, xq) > 50)
@@ -363,6 +451,7 @@ int getDescriptorFromImage(char* imageFile, float* descriptor)
 }
 
 
+
 int getClassFilesNum(char *dir)
 {
 	FILE *fp;
@@ -379,7 +468,7 @@ int getClassFilesNum(char *dir)
 }
 int getTrainFilesNum(int trainCount[])
 {
-	
+
 	int trainCountAll = 0;
 	for (int i = 0; i < CLASS_NUM; i++)
 	{
@@ -403,7 +492,7 @@ void readFiles(int classLoc, Cfname *imgFiles, float *labels)
 	{
 		imgFiles[num][0] = '\0';
 		size_t name_len = strlen(line);
-		if (line[name_len-1] == '\r' || line[name_len-1] == '\n')
+		if (line[name_len - 1] == '\r' || line[name_len - 1] == '\n')
 		{
 			line[name_len - 1] = '\0';
 		}
@@ -411,7 +500,7 @@ void readFiles(int classLoc, Cfname *imgFiles, float *labels)
 		strcat_s(imgFiles[num], "\\");
 		strcat_s(imgFiles[num], line);
 		if (labels)
-			*(labels+num) = classLabels[classLoc];
+			*(labels + num) = classLabels[classLoc];
 		num++;
 	}
 
@@ -425,11 +514,11 @@ void init(){
 		classLabels[i] = (float)i;
 	}
 }
-int readTrainFiles(Cfname *trainFiles,int trainClassCount[], int trainFilesCount, float *labels)
+int readTrainFiles(Cfname *trainFiles, int trainClassCount[], int trainFilesCount, float *labels)
 {
 	for (int i = 0, cur = 0; i < CLASS_NUM; cur += trainClassCount[i], i++)
 	{
-		readFiles(i, trainFiles + cur, labels+cur);
+		readFiles(i, trainFiles + cur, labels + cur);
 	}
 	for (int i = 0; i < trainFilesCount; i++){
 		cout << labels[i] << ":" << trainFiles[i] << endl;
@@ -438,7 +527,7 @@ int readTrainFiles(Cfname *trainFiles,int trainClassCount[], int trainFilesCount
 }
 int readTestFiles(Cfname *testFiles, int testFilesCount)
 {
-	readFiles(TEST_LOC, testFiles,NULL);
+	readFiles(TEST_LOC, testFiles, NULL);
 
 	for (int i = 0; i < testFilesCount; i++){
 		cout << testFiles[i] << endl;
@@ -456,7 +545,7 @@ int main(int argc, char **argv)
 	Cfname *imgFiles = new Cfname[trainFilesCount];
 	Cfname *testFiles = new Cfname[testFilesCount];
 	float *labels = new float[trainFilesCount];
-	int rows_for_train = readTrainFiles(imgFiles,classDirs,trainFilesCount,labels);
+	int rows_for_train = readTrainFiles(imgFiles, classDirs, trainFilesCount, labels);
 	int rows_for_test = readTestFiles(testFiles, testFilesCount);
 
 
@@ -505,6 +594,10 @@ int main(int argc, char **argv)
 	CvSVM SVM;
 
 	///// 使用带参数的SVM进行训练
+	for (int i = 0; i < rows_for_train; i++)
+		for (int j = 0; j < MAX_DIM_DESCRIPTOR; j++)
+			if (descriptors[i][j] != 0)
+				;//cout << "des_for_train[" << i << "][" << j << "]" << descriptors[i][j] << endl;
 	SVM.train(trainDataMat, labelsMat, Mat(), Mat(), params);
 	///// 使用默认参数的SVM进行训练
 	//SVM.train(trainDataMat, labelsMat);
@@ -525,8 +618,21 @@ int main(int argc, char **argv)
 		response = SVM.predict(testDesMat);
 		std::cout << " RESULT" << i << "---" << response << "---" << testFiles[i] << endl;
 	}
+
+
+	///// kmeans
+	Mat testKmeansData(rows_for_test, MAX_DIM_DESCRIPTOR, CV_32FC1);
+	Mat kmeansLabels;
+	for (int i = 0; i < rows_for_test; i++)
+		for (int j = 0; j < MAX_DIM_DESCRIPTOR; j++)
+		{
+		testKmeansData.at<float>(i, j) = descriptorsTest[i][j];
+		}
+	cv::kmeans(testKmeansData, 2, kmeansLabels, TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 20, 1.0), 10, KMEANS_PP_CENTERS);
+	///// result of kmeans:
+	for (int i = 0; i < rows_for_test; i++)
+		cout << "K-Means--" << testFiles[i] << ":" << kmeansLabels.at<int>(i) << endl;
 	system("pause");
 
 	return 0;
 }
-
