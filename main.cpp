@@ -65,7 +65,13 @@ const int NIBLACK_STEP = 3;
 const float VARIANCE_THRESHOLD = 5.0;
 
 // Choose the getdescriptor function
-#define _33_
+#define _g_
+#ifdef _g_
+#define getDescriptorFromImage getDescriptorFromImage_g
+const int MAX_DIM_DESCRIPTOR = 10;
+const int STEP = 1;
+#endif // _g_
+
 #ifdef _ZG1_
 #define getDescriptorFromImage _zg1_getDescriptorFromImage
 const int MAX_DIM_DESCRIPTOR = 257;
@@ -105,6 +111,7 @@ const int SAMPLE_POINT_Q = 9;
 const int FILE_NAME_LENGTH = 100;
 typedef char Cfname[FILE_NAME_LENGTH];
 typedef float Dcount[MAX_DIM_DESCRIPTOR];
+typedef int Ipos[6];
 const int CLASS_NUM = 62;
 const int TEST_LOC = CLASS_NUM;
 const int HULL_LIST_MAX = 20;
@@ -264,7 +271,7 @@ int getTextBox(char* imageFile)
 
 	for (int i = 0; i < num_bilateral_filtering01; ++i)
 	{
-		cv::bilateralFilter(bilateral_img01, bilateral_img02, 5, 40, 200, 4);
+		cv::bilateralFilter(bilateral_img01, bilateral_img02, 5, 40, 20, 4);
 		bilateral_img01 = bilateral_img02.clone();
 		bilateral_img02 = cv::Mat::zeros(input_img.cols, input_img.rows, CV_8UC3);
 	}
@@ -393,7 +400,16 @@ int getTextBox(char* imageFile)
 	for (int i = 0; i < f02; i++)
 	{
 		char fname[50];
-		sprintf_s(fname, "TEST/%d_%s", i, imageFile);
+		//the position of this cc
+		int f_x_tl = 0;
+		int f_y_tl = 0;
+		int f_x_br = 0;
+		int f_y_br = 0;
+		f_x_tl = list_box_filter02[i].tl().x;
+		f_y_tl = list_box_filter02[i].tl().y;
+		f_x_br = list_box_filter02[i].br().x;
+		f_y_br = list_box_filter02[i].br().y;
+		sprintf_s(fname, "TEST/%d_%d_%d_%d_%d_%s", i,f_x_tl,f_y_tl,f_x_br,f_y_br,imageFile);
 		cout << "out put " << fname << endl;
 		int x1, y1, w, h;
 		x1 = list_box_filter02[i].tl().x;
@@ -596,6 +612,112 @@ int _zg2_getDescriptorFromImage(char* imageFile, float* descriptor)
 	}
 
 	return 0;
+}
+int getDescriptorFromImage_g(char* imageFile, float* descriptor)
+{
+	cv::Mat input_img = cv::imread(imageFile, 1);
+	if (!input_img.data) {
+		cout << "open image file:" << imageFile << " failed!" << endl;
+		return -1;
+	}
+
+	cv::Mat resized_img;
+	cv::Mat gray_img;
+	cv::Mat canny_img;
+
+	//// resizing image
+	cv::resize(input_img, resized_img, cv::Size(48, 48), 0.0, 0.0, 1);
+	//// resizing end
+	///// Initialize
+	int d_ptr, d_ptr02; // pointer for descriptor[ ]
+	for (d_ptr = 0; d_ptr < MAX_DIM_DESCRIPTOR; ++d_ptr)
+	{
+		descriptor[d_ptr] = 0;
+	}
+
+	d_ptr = 0;
+	d_ptr02 = 0;
+	Mat img_filter = resized_img.clone();
+	/*cv::bilateralFilter(resized_img, img_filter, 5, 40, 200, 4);
+	resized_img = img_filter.clone();
+	cv::namedWindow("filter");
+	cv::imshow("filter", resized_img);
+	*///// Generate canny images
+	cv::cvtColor(resized_img, gray_img, CV_BGR2GRAY);
+	for (int i = 0; i < 48; i++)
+	{
+		for (int j = 0; j < 48; j++)
+		{
+			if (gray_img.at<uchar>(i, j) > 128)
+				gray_img.at<uchar>(i, j) = 255;
+			else
+				gray_img.at<uchar>(i, j) = 0;
+		}
+	}
+	cv::Canny(gray_img, canny_img, 50.0, 200.0, 3, true);
+	//// Generate canny end
+	int y_up, y_down, x_left, x_right;
+	float ori = 0.0;
+//	imshow("canny", canny_img);
+	waitKey(0);
+	for (int i = 1; i < resized_img.cols-1; i++)
+	{
+		//d_ptr = i * 10;
+		for (int j = 1; j < resized_img.rows-1; j++)
+		{
+			//cout << canny_img.at<int>(i, j) << endl;
+			int temp = canny_img.at<uchar>(i,j);
+			//if (canny_img.at<uchar>(i, j) > 50)
+			{
+				
+				x_left = gray_img.at<uchar>(i - 1, j);
+				x_right = gray_img.at<uchar>(i + 1, j);
+				y_up = gray_img.at<uchar>(i, j - 1);
+				y_down = gray_img.at<uchar>(i, j + 1);
+				int pt = gray_img.at<uchar>(i, j);
+				float xx = pt - x_left;
+				float yy = pt - y_up;
+				float xy = sqrtf(xx*xx + yy*yy);
+				ori = 0;
+				/*cout << "xy:" << xy << endl;
+				cout << "xx:" << xx << endl;
+				cout << "yy:" << yy << endl;*/
+				if (xy != 0)
+					ori = abs(xx)/xy;
+				//cout << "ori:" << ori << endl;
+				/*
+				if(pt - x_left != 0)
+					ori = ori/ (pt - x_left);*/
+
+				// divided into 10
+				float fig_w = 1.0 / MAX_DIM_DESCRIPTOR;
+				for (int i = 0; i < MAX_DIM_DESCRIPTOR; i++)
+				{
+					if (ori >= i*fig_w && ori < (i + 1)*fig_w)
+					{
+						descriptor[i]++;					
+						break;
+					}
+				}
+
+				//descriptor[d_ptr] = ori;
+				//d_ptr++;
+				//cout << "descriptor[ " << d_ptr << "] = " << descriptor[d_ptr] << endl;
+			}
+		}
+	}
+	//show fig
+	/*cout << "[[" << imageFile << "]]" << endl;
+	for (int i = 0; i < MAX_DIM_DESCRIPTOR; i++)
+	{
+		printf("[%3d]:", i);
+		for (int j = 0; j < descriptor[i]/30; j++)
+		{
+			cout << "*";
+		}
+		cout << endl;
+	}*/
+	return(0);
 }
 int _33_getDescriptorFromImage(char* imageFile, float* descriptor)
 {
@@ -926,6 +1048,40 @@ void init(){
 	// Get Boxes
 	//getTextBox("dirty.jpg");
 }
+// 看一个矩形是否有90%都在另一个矩形里面
+float inArea(int x_tl, int y_tl, int x_br, int y_br, int x_tl_big, int y_tl_big, int x_br_big, int y_br_big)
+{
+	float all = 0;
+	float in = 0;
+	for (int i = x_tl; i < x_br; i++)
+	{
+		for (int j = y_tl; j < y_br; j++)
+		{
+			all++;
+			if (x_tl_big < i && i < x_br_big && y_tl_big < j && j < y_br_big)
+				in++;
+		}
+	}
+	return (float)in / all;
+}
+void box233(Ipos *pos, int len)
+{
+	for (int i = 0; i < len; i++)
+	{
+		for (int j = 0; j < len; j++)
+			if (i != j && pos[i][5] == 1 && pos[j][4] == 1)
+			{
+				float per = inArea(pos[i][0], pos[i][1], pos[i][2], pos[i][3], pos[j][0], pos[j][1], pos[j][2], pos[j][3]);
+				if (0.75 < per)
+				{
+					pos[i][4] = 0;
+					cout << "per[" << i << "]" << per << endl;
+					cout << "pos[" << i << "]" << pos[i][4] << ":" << pos[i][5] << endl;
+				}
+			}
+	}
+
+}
 int readTrainFiles(Cfname *trainFiles, int trainClassCount[], int trainFilesCount, float *labels)
 {
 	for (int i = 0, cur = 0; i < CLASS_NUM; cur += trainClassCount[i], i++)
@@ -946,6 +1102,23 @@ int readTestFiles(Cfname *testFiles, int testFilesCount)
 	}*/
 	return testFilesCount;
 }
+void readPositionFromImageName(char *fname, int* pos)
+{
+	char fname_cp[50];
+	strcpy_s(fname_cp, fname);
+	char * split = "_";
+	char *p;
+	char *token;
+	//p = strtok_s(fname, split);
+	token = strtok_s(fname_cp, split, &p);
+	for (int i = 0; i < 4; i++)
+	{
+		token = strtok_s(NULL, split,&p);
+		pos[i] = atoi(token);
+	}
+	pos[4] = 1;
+	pos[5] = 0;
+}
 
 int main(int argc, char **argv)
 {
@@ -964,6 +1137,7 @@ int main(int argc, char **argv)
 
 
 	///// 训练用descriptor
+	Ipos *pos = new Ipos[rows_for_test];
 	Dcount *descriptors = new Dcount[rows_for_train];
 	Dcount *descriptorsTest = new Dcount[rows_for_test];
 	//float descriptors[rows_for_train][MAX_DIM_DESCRIPTOR];
@@ -976,7 +1150,6 @@ int main(int argc, char **argv)
 	for (int i = 0; i < rows_for_train; i++) {
 		cout << i << "/" << rows_for_train << endl;
 		try{
-
 			getDescriptorFromImage(imgFiles[i], descriptors[i]);
 		}
 		catch (Exception &e)
@@ -990,7 +1163,9 @@ int main(int argc, char **argv)
 	cout << "***********Get descriptor for test....***********" << endl;
 	for (int i = 0; i < rows_for_test; i++) {
 		cout << i << "/" << rows_for_test << endl;
-		string fn = testFiles[i];
+		char* fn = testFiles[i];
+		readPositionFromImageName(fn, pos[i]);
+
 		getDescriptorFromImage(testFiles[i], descriptorsTest[i]);
 	}
 	Mat labelsMat(rows_for_train, 1, CV_32FC1, labels);
@@ -1015,7 +1190,7 @@ int main(int argc, char **argv)
 	for (int i = 0; i < rows_for_train; i++)
 		for (int j = 0; j < MAX_DIM_DESCRIPTOR; j++)
 			if (descriptors[i][j] != 0)
-				 cout << "des_for_train[" << i << "][" << j << "]" << descriptors[i][j] << endl;
+				;// cout << "des_for_train[" << i << "][" << j << "]" << trainDataMat.at<float>(i, j) << endl;
 	//system("pause");
 	cout << endl << "Training..." << endl;
 	SVM.train(trainDataMat, labelsMat, Mat(), Mat(), params);
@@ -1037,10 +1212,8 @@ int main(int argc, char **argv)
 		}
 		///// 进行预测
 		response = SVM.predict(testDesMat);
-	//if (response = 1)
-			//std::cout << " RESULT" << i << "---" << response << "---" << testFiles[i] << endl;
+		//std::cout << " RESULT" << i << "---" << response << "---" << testFiles[i] << endl;
 	}
-
 
 	///// kmeans
 	cout << "Response of K-Means:" << endl;
@@ -1054,13 +1227,45 @@ int main(int argc, char **argv)
 	cv::kmeans(testKmeansData, 2, kmeansLabels, TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 20, 1.0), 10, KMEANS_PP_CENTERS);
 	///// result of kmeans:
 	int count = 0;
+	Mat dirty = imread("dirty.jpg");
 	for (int i = 0; i < rows_for_test; i++)
-		if (0 != kmeansLabels.at<int>(i))
-		{
+	{
+		//if (0 != kmeansLabels.at<int>(i)
+		int result = kmeansLabels.at<int>(i);
 		count++;
-		cout << "K-Means--" << testFiles[i] << ":" << kmeansLabels.at<int>(i) << endl;
+		if (result == 1)
+		{
+			pos[i][5] = 1;
+//			std::cout << "K-" << i << "-Means--" << testFiles[i] << ":" << result << endl;
 		}
-	cout << "Result : " << count << endl;
+	}
+	box233(pos,rows_for_test);
+
+	count = 0;
+	for (int i = 0; i < rows_for_test; i++)
+	{
+		if ( pos[i][5] != 1 || pos[i][4] != 1)
+			continue;
+		//count++;
+		cv::Scalar color = cv::Scalar(0, 255, 0);
+		if (pos[i][4] == 1)
+			color = cv::Scalar(255, 0, 0);
+		else
+			color = cv::Scalar(0, 255, 0);
+
+		Point tl = Point(pos[i][0], pos[i][1]);
+		Point br = Point(pos[i][2], pos[i][3]);
+		cv::rectangle(dirty, tl, br, color, 2, 2, 0);  // tl = top left point, br = bottom right point
+
+	}
+	/*for (int i = 0; i < rows_for_test; i++)
+	{
+		int result = kmeansLabels.at<int>(i);
+		if (result )
+	}*/
+	std::cout << "Result : " << count << endl;
+	namedWindow("dirty");
+	imshow("dirty",dirty);
 	waitKey(0);
 
 	system("pause");
